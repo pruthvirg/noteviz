@@ -1,0 +1,83 @@
+Requirement Document: Flowchart Generation from PDFs
+
+Goal of the App
+
+The application extracts key topics from user-provided PDFs, stores chunk embeddings in a vector database, and retrieves relevant document chunks based on user-input topics. Using this context, it generates Mermaid.js flowchart code via an LLM and renders it within a Streamlit UI.
+
+Core Functionalities
+
+User Input Handling
+
+Users can upload one or more PDFs.
+
+Users can enter a topic and a short description.
+
+Topic Extraction & Selection
+
+Upon PDF upload, the app uses an LLM to extract the top K main topics from the PDF.
+
+Display extracted topics and allow users to select them for flowchart generation.
+
+Flowchart Generation
+
+Retrieve relevant document chunks from a vector database based on user-selected topics.
+
+Use an LLM (GPT-4o) to generate Mermaid.js code for the flowchart.
+
+Render the flowchart beautifully within Streamlit.
+
+If Mermaid code generation fails, retry by providing the failure reason as additional context to the LLM.
+
+Related Topics Suggestion
+
+After generating a flowchart, list additional related topics that the user can select to create further flowcharts.
+
+Session Management & Export
+
+Allow users to save generated flowcharts within the session.
+
+Provide an option to download flowcharts as PDFs.
+
+Security & Privacy
+
+Ensure that uploaded documents remain private and are not accessible to other users.
+
+General Guidelines
+
+Modular, Object-Oriented Code
+
+Implement modular design patterns, ensuring easy replacement of components such as chunk retrieval, LLM API, chunking strategy, vector database, and LLM configurations (e.g., prompts, temperature settings).
+
+Production-Quality Standards
+
+Follow best software practices for maintainability and readability.
+
+Error Handling & Resilience
+
+Implement robust error handling, especially for LLM interactions and Mermaid rendering.
+
+Testing
+
+Write unit and integration tests to validate all components.
+
+Deployment & Compatibility
+
+Structure files to support local execution as well as deployment on Streamlit Cloud.
+
+Tech Stack & Tools
+
+Package Management: UV
+
+Frontend UI: Streamlit
+
+Environment Variables: Store API keys in .env file
+
+LLM API: OpenAI GPT-4o
+
+Vector Database: ChromaDB
+
+Mermaid Rendering: Streamlit UI
+
+Chunking & Retrieval: LangChain
+
+This document serves as a blueprint for implementation, ensuring a structured and scalable approach to development.
