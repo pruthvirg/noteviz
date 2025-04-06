@@ -1,0 +1,9 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+
+# Your rule content
+
+remember that you are working in a windows system. You might need to use wsl to run commands.

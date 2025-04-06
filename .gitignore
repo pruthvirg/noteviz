@@ -17,6 +17,7 @@ sdist/
 var/
 wheels/
 *.egg-info/
+src/*.egg-info/
 .installed.cfg
 *.egg
 
@@ -53,3 +54,12 @@ htmlcov/
 # Secrets
 .secrets
 *.secrets
+
+# Test artifacts
+tests/data/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Project specific
+*.pdf

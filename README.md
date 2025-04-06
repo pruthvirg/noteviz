@@ -1,73 +1,105 @@
 # NoteViz
 
-A Streamlit application that generates flowcharts from PDF documents using LLMs and vector embeddings.
+A tool for analyzing and visualizing books and their concepts using Large Language Models (LLMs). NoteViz helps you understand complex documents by extracting key topics, generating summaries, and creating visual representations of the content.
 
 ## Features
 
-- PDF document processing and chunking
-- Topic extraction using LLMs
-- Vector-based and TF-IDF document retrieval
-- Mermaid.js flowchart generation
-- Interactive Streamlit UI
+- PDF text extraction and processing
+- Intelligent text summarization using OpenAI's GPT models
+- Topic extraction and analysis with confidence scores
+- Key concept identification
+- Semantic search capabilities
+- Command-line interface
+- (Coming Soon) Flowchart generation for concept visualization
 
-## Setup
+## Installation
 
 1. Clone the repository:
+   ```bash
+   git clone https://github.com/yourusername/noteviz.git
+   cd noteviz
+   ```
+
+2. Install uv (if not already installed):
+   ```bash
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   ```
+
+3. Create and activate a virtual environment:
+   ```bash
+   uv venv
+   source .venv/bin/activate  # On Unix/macOS
+   # OR
+   .venv\Scripts\activate     # On Windows
+   ```
+
+4. Install the package:
+   ```bash
+   uv pip install -e .  # For basic installation
+   uv pip install -e ".[dev]"  # For development with test dependencies
+   ```
+
+5. Set up your OpenAI API key:
+   ```bash
+   # On Unix/macOS
+   export OPENAI_API_KEY=your_api_key_here
+   
+   # On Windows (PowerShell)
+   $env:OPENAI_API_KEY = "your_api_key_here"
+   ```
+
+## Usage
+
+Process a PDF file:
 ```bash
-git clone <repository-url>
-cd noteviz
+noteviz process path/to/your.pdf
 ```
 
-2. Create and activate virtual environment:
-```bash
-uv venv
-source .venv/bin/activate  # On Unix/macOS
-# or
-.venv\Scripts\activate  # On Windows
-```
-
-3. Install dependencies:
-```bash
-uv pip install -r requirements.txt
-```
-
-4. Set up configuration files:
-```bash
-# Copy application configuration
-cp .env.example .env
-# Edit .env with your application settings
-
-# Copy secrets template
-cp .secrets.example .secrets
-# Edit .secrets with your API keys and sensitive information
-```
-
-5. Run the application:
-```bash
-streamlit run src/app.py
-```
+This will:
+1. Extract text from the PDF
+2. Generate a comprehensive summary
+3. Extract key topics with descriptions and confidence scores
+4. Identify important concepts
+5. (Coming Soon) Generate a flowchart visualization
 
 ## Development
 
-- Python 3.8+
-- UV for dependency management
-- Streamlit for UI
-- OpenAI API for LLM
-- SentenceTransformers for embeddings
-- ChromaDB for vector storage
-
-## Configuration
-
-The application uses two configuration files:
-- `.env`: Application settings and feature flags
-- `.secrets`: API keys and sensitive information
-
-## Testing
-
+### Running Tests
 ```bash
+# Install development dependencies
+uv pip install -e ".[dev]"
+
+# Run all tests
 pytest
+
+# Run specific test categories
+pytest tests/unit/  # Unit tests
+pytest tests/integration/  # Integration tests
 ```
+
+### Project Structure
+```
+noteviz/
+├── src/
+│   └── noteviz/
+│       ├── core/           # Core functionality
+│       │   ├── pdf/        # PDF processing
+│       │   ├── llm/        # LLM integration
+│       │   ├── embedding/  # Text embedding
+│       │   └── retrieval/  # Semantic search
+│       ├── cli.py          # Command-line interface
+│       └── __init__.py
+├── tests/                  # Test files
+│   ├── unit/              # Unit tests
+│   └── integration/       # Integration tests
+├── pyproject.toml         # Project configuration
+└── README.md
+```
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-MIT
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

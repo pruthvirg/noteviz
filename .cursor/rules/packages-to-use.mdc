@@ -1,0 +1,6 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+Use UV for package management, not PIP. Ensure you are running tests etc also through uv. First ensure you are using the venv created by UV and enter it before trying to run any commands.

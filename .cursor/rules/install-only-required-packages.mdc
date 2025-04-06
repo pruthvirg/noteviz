@@ -1,0 +1,6 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+Install only absolutely required packages. Do not install packages that are not necessary to run the app code we are building.
