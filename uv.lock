@@ -1,5 +1,4 @@
-# uv.lock file for noteviz
-# Generated for Streamlit Cloud deployment
+version = "0.1.0"
 
 [python]
 version = ">=3.9"
