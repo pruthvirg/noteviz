@@ -151,9 +151,9 @@ class OpenAILLMService(LLMService):
 class OpenAISummarizer(Summarizer):
     """OpenAI implementation of text summarization."""
     
-    def __init__(self, config: SummarizerConfig):
+    def __init__(self, config: SummarizerConfig, client: Optional[AsyncOpenAI] = None):
         super().__init__(config)
-        self.client = AsyncOpenAI()
+        self.client = client or AsyncOpenAI()
     
     async def summarize(self, text: str) -> str:
         """Generate a summary of the text.
@@ -182,9 +182,9 @@ class OpenAISummarizer(Summarizer):
 class OpenAITopicExtractor(TopicExtractor):
     """OpenAI implementation of topic extraction."""
     
-    def __init__(self, config: TopicExtractorConfig):
+    def __init__(self, config: TopicExtractorConfig, client: Optional[AsyncOpenAI] = None):
         super().__init__(config)
-        self.client = AsyncOpenAI()
+        self.client = client or AsyncOpenAI()
     
     async def extract_topics(self, chunks: List[str]) -> List[Topic]:
         """Extract topics from text chunks.

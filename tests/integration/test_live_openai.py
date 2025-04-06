@@ -80,6 +80,8 @@ def retrieval_config():
     )
 
 
+@pytest.mark.expensive
+@pytest.mark.skip(reason="Skipping expensive OpenAI API test")
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_live_openai_integration(
