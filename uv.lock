@@ -1,0 +1,22 @@
+# uv.lock file for noteviz
+# Generated for Streamlit Cloud deployment
+
+# Python version requirement
+python>=3.9
+
+# Core dependencies
+openai==1.12.0
+pypdf==3.17.4
+numpy==1.26.4
+streamlit==1.32.0
+python-dotenv==1.0.1
+aiohttp==3.9.3
+
+# Development dependencies needed for deployment
+pytest==8.0.2
+pytest-asyncio==0.23.5
+reportlab==4.1.0
+
+# Additional dependencies for Streamlit
+asyncio==3.4.3
+typing-extensions==4.9.0 
