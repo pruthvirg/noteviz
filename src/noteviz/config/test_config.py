@@ -4,7 +4,7 @@ Test configuration for noteviz.
 from pathlib import Path
 
 # Test mode flag
-TEST_MODE = True
+TEST_MODE = False
 
 # Path to test PDF file
 TEST_PDF_PATH = Path("tests/data/test.pdf")

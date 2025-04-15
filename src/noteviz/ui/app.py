@@ -194,6 +194,8 @@ if 'selected_topic' not in st.session_state:
     st.session_state.selected_topic = None
 if 'page_aware_chunks' not in st.session_state:
     st.session_state.page_aware_chunks = None
+if 'current_pdf_hash' not in st.session_state:
+    st.session_state.current_pdf_hash = None
 
 # Set up the page
 st.markdown("""
@@ -213,7 +215,7 @@ if not TEST_MODE and not os.getenv("OPENAI_API_KEY"):
     st.stop()
 
 @st.cache_data
-def process_pdf(pdf_content):
+def process_pdf(pdf_content, pdf_hash):
     """Process a PDF file and extract topics."""
     logger.info("Starting PDF processing...")
     
@@ -261,11 +263,24 @@ def process_pdf(pdf_content):
             logger.info("Using test topics")
         else:
             chunk_texts = [chunk.text for chunk in chunks]
-            topics = topic_extractor.extract_topics_sync(chunk_texts)
-            descriptions = {topic: f"Description for {topic}" for topic in topics}
+            # Run async code in a new event loop
+            import asyncio
+            topics = asyncio.run(topic_extractor.extract_topics(chunk_texts))
+            # Convert Topic objects to dictionaries for serialization
+            topic_dicts = [{"name": t.name, "description": t.description} for t in topics]
+            descriptions = {t["name"]: t["description"] for t in topic_dicts}
+            topics = topic_dicts
             logger.info(f"Extracted {len(topics)} topics")
         
-        return chunks, topics, descriptions
+        # Convert chunks to serializable format
+        chunk_dicts = [{
+            "text": c.text,
+            "page_number": c.page_number,
+            "start_char": c.start_char,
+            "end_char": c.end_char
+        } for c in chunks]
+        
+        return chunk_dicts, topics, descriptions
     finally:
         # Clean up temporary file - now safe to delete since file handle is closed
         try:
@@ -279,11 +294,33 @@ def process_pdf(pdf_content):
 uploaded_file = st.file_uploader("Upload your PDF", type=['pdf'])
 
 if uploaded_file:
+    # Calculate hash of PDF content to detect changes
+    import hashlib
+    pdf_content = uploaded_file.getvalue()
+    current_hash = hashlib.md5(pdf_content).hexdigest()
+    
+    # Clear cache and state if PDF changed
+    if current_hash != st.session_state.current_pdf_hash:
+        st.session_state.current_pdf_hash = current_hash
+        st.session_state.topics = []
+        st.session_state.selected_topic = None
+        st.session_state.page_aware_chunks = None
+        process_pdf.clear()
+        
     # Process PDF when file is uploaded
     with st.spinner("Analyzing document..."):
         try:
-            chunks, topics, descriptions = process_pdf(uploaded_file.getvalue())
-            st.session_state.page_aware_chunks = chunks
+            chunks, topics, descriptions = process_pdf(pdf_content, current_hash)
+            # Convert chunk dictionaries back to PageAwareChunk objects
+            page_aware_chunks = [
+                PageAwareChunk(
+                    text=c["text"],
+                    page_number=c["page_number"],
+                    start_char=c["start_char"],
+                    end_char=c["end_char"]
+                ) for c in chunks
+            ]
+            st.session_state.page_aware_chunks = page_aware_chunks
             st.session_state.topics = topics
             st.session_state.topic_descriptions = descriptions
         except Exception as e:
@@ -298,7 +335,7 @@ if uploaded_file:
     col1, col2 = st.columns(2)
     
     # Display topics in columns
-    for idx, topic in enumerate(topics):
+    for idx, topic in enumerate(st.session_state.topics):
         with col1 if idx % 2 == 0 else col2:
             st.markdown(f"""
                 <style>
@@ -307,11 +344,22 @@ if uploaded_file:
                         background-color: #f8f9fa;
                         border: 1px solid #e9ecef;
                         border-radius: 12px;
-                        padding: 1.8rem;
-                        height: auto;
+                        padding: 1.5rem;
+                        min-height: 160px;
                         text-align: left;
                         color: inherit;
                         margin-bottom: 1.2rem;
+                        display: flex !important;
+                        flex-direction: column;
+                        justify-content: flex-start;
+                        align-items: flex-start;
+                        gap: 0.8rem;
+                        white-space: normal !important;
+                        height: auto !important;
+                    }}
+                    div[data-testid="stButton"] > button > div {{
+                        width: 100%;
+                        white-space: normal !important;
                     }}
                     div[data-testid="stButton"] > button:hover {{
                         background-color: #ffffff;
@@ -326,31 +374,72 @@ if uploaded_file:
                     div[data-testid="stButton"] > button p {{
                         font-size: 1rem;
                         color: #666666;
-                        margin-top: 0.8rem;
+                        margin: 0;
+                        padding: 0;
+                        line-height: 1.5;
+                        width: 100%;
+                        white-space: normal !important;
+                        overflow-wrap: break-word;
+                        word-wrap: break-word;
+                        display: block;
                     }}
                     div[data-testid="stButton"] > button strong {{
                         display: block;
                         font-size: 1.4rem;
-                        font-weight: 800;
+                        font-weight: 700;
                         color: #1f1f1f;
-                        margin-bottom: 0.8rem;
-                        letter-spacing: -0.02em;
+                        margin: 0;
+                        padding: 0;
+                        line-height: 1.3;
+                        width: 100%;
+                        white-space: normal !important;
+                        overflow-wrap: break-word;
+                        word-wrap: break-word;
+                    }}
+                    [data-testid="column"] {{
+                        padding: 0.5rem !important;
                     }}
                 </style>
             """, unsafe_allow_html=True)
             
             if st.button(
-                f"""**{topic}**
-
-                {descriptions.get(topic, '')}""",
+                f"""**{topic["name"]}**
+                {st.session_state.topic_descriptions.get(topic["name"], '')}""",
                 key=f"topic_{idx}"
             ):
-                st.session_state.selected_topic = topic
+                st.session_state.selected_topic = topic["name"]
     
     # Custom topic input
     st.markdown('<h3 class="custom-header">✨ Or Enter Your Own Topic</h3>', unsafe_allow_html=True)
     custom_topic = st.text_input("Enter a topic", key="custom_topic")
-    if st.button("Visualize", use_container_width=True) and custom_topic:
+    
+    # Add custom button styling
+    st.markdown("""
+        <style>
+        div[data-testid="stButton"] button {
+            height: 45px !important;
+            padding: 0.4rem 1rem !important;
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+        }
+        div[data-testid="stButton"] button:hover {
+            border-color: #4CAF50;
+            background-color: #ffffff;
+        }
+        div[data-testid="stButton"] button p {
+            font-size: 1.3rem !important;
+            font-weight: 800 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            color: #4CAF50 !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    if st.button("Visualize!", 
+                use_container_width=True, 
+                key="visualize_button", 
+                help="Generate visualization for custom topic") and custom_topic:
         st.session_state.selected_topic = custom_topic
     
     # Show flowchart and summary if a topic is selected
@@ -382,10 +471,13 @@ if uploaded_file:
                         )
                     else:
                         generator = OpenAIFlowchartGenerator()
-                        flowchart = generator.generate_flowchart_sync(
-                            st.session_state.page_aware_chunks,
+                        # Combine chunks into a single text
+                        combined_text = "\n".join(chunk.text for chunk in st.session_state.page_aware_chunks)
+                        import asyncio
+                        flowchart = asyncio.run(generator.generate_flowchart(
+                            combined_text,
                             st.session_state.selected_topic
-                        )
+                        ))
                     
                     # Render flowchart
                     if isinstance(flowchart, str):
@@ -397,45 +489,45 @@ if uploaded_file:
                     
                     st.components.v1.html(
                         f"""
-                        <div class="mermaid">
-                        {mermaid_code}
+                        <div style="height: 600px; overflow-y: auto; padding: 1rem; background-color: white; border-radius: 8px; border: 1px solid #e9ecef;">
+                            <div class="mermaid">
+                                {mermaid_code}
+                            </div>
                         </div>
                         <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
                         <script>
                             mermaid.initialize({{ 
-                                startOnLoad: true, 
+                                startOnLoad: true,
                                 theme: 'default',
                                 flowchart: {{
-                                    htmlLabels: true,
-                                    curve: 'basis'
+                                    curve: 'basis',
+                                    padding: 20
                                 }}
                             }});
                         </script>
                         """,
-                        height=500
+                        height=650,
                     )
                 except Exception as e:
                     logger.error(f"Error generating flowchart: {str(e)}")
-                    st.error(f"Error generating flowchart: {str(e)}")
+                    st.error("Failed to generate flowchart. Please try again.")
         
         with col2:
-            st.subheader("Summary")
+            st.subheader(f"Summary: {st.session_state.selected_topic}")
             with st.spinner("Generating summary..."):
                 try:
                     if TEST_MODE:
-                        summary = TEST_RESPONSES["topic_summaries"].get(
-                            st.session_state.selected_topic,
-                            "Test summary"
-                        )
+                        summary = TEST_RESPONSES["summary"]
                     else:
                         summarizer = OpenAISummarizer(SummarizerConfig())
-                        summary = summarizer.generate_summary_sync(
-                            st.session_state.page_aware_chunks,
-                            st.session_state.selected_topic
-                        )
+                        # Get relevant chunks for the selected topic
+                        relevant_chunks = [chunk for chunk in st.session_state.page_aware_chunks]
+                        combined_text = "\n".join(chunk.text for chunk in relevant_chunks)
+                        import asyncio
+                        summary = asyncio.run(summarizer.summarize(combined_text))
                     st.write(summary)
                 except Exception as e:
                     logger.error(f"Error generating summary: {str(e)}")
-                    st.error(f"Error generating summary: {str(e)}")
+                    st.error("Failed to generate summary. Please try again.")
 else:
     st.info("Upload your PDF to see the topics!") 

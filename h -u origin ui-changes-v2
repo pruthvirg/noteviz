@@ -1,0 +1,25 @@
+[33mcommit c9f7b32903f4f8871ad17f0f19dffc39ab41fcc6[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mui-changes-v2[m[33m)[m
+Author: Pruthvi Raj R G <pruthvirg123@gmail.com>
+Date:   Tue Apr 15 09:06:45 2025 +0530
+
+    UI and Core Improvements: Enhanced topic boxes, added page-aware PDF processing, and test configurations
+
+ .cursor/rules/refer-to-streamlit-docs         |   1 [32m+[m
+ pyproject.toml                                |  26 [32m++++[m
+ src/noteviz/config/__init__.py                |   3 [32m+[m
+ src/noteviz/config/test_config.py             |  33 [32m++++++[m
+ src/noteviz/core/llm/__init__.py              |   4 [32m+[m[31m-[m
+ src/noteviz/core/llm/openai.py                |  17 [32m++[m[31m-[m
+ src/noteviz/core/llm/random_chunk.py          |  93 [32m+++++++++++++++[m
+ src/noteviz/core/pdf/__init__.py              |   3 [32m+[m
+ src/noteviz/core/pdf/page_aware_pdf.py        | 129 [32m++++++++++++++++++++[m
+ src/noteviz/core/pdf/processor.py             |  54 [32m+++++++++[m
+ src/noteviz/ui/components/flowchart_viewer.py |  43 [32m+++++++[m
+ src/noteviz/ui/components/pdf_uploader.py     |  21 [32m++++[m
+ src/noteviz/ui/components/topic_selector.py   |  28 [32m+++++[m
+ tests/test_page_aware.py                      |  79 [32m+++++++++++++[m
+ tests/test_page_aware_simple.py               |  82 [32m+++++++++++++[m
+ tests/test_page_aware_sync.py                 |  37 [32m++++++[m
+ tests/unit/test_page_aware_pdf.py             | 127 [32m++++++++++++++++++++[m
+ tests/unit/test_random_chunk.py               | 163 [32m++++++++++++++++++++++++++[m
+ 18 files changed, 941 insertions(+), 2 deletions(-)
