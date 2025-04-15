@@ -1,148 +1,188 @@
 """Main Streamlit app for NoteViz."""
 import streamlit as st
-import tempfile
 import os
+import logging
 from pathlib import Path
-import asyncio
-from noteviz.core.pdf import PDFConfig, PyPDFProcessor
+import tempfile
+from noteviz.core.pdf import PDFConfig, PageAwarePDFProcessor, PageAwareChunk
 from noteviz.core.llm.openai import OpenAITopicExtractor, OpenAISummarizer
 from noteviz.core.llm import TopicExtractorConfig, SummarizerConfig
 from noteviz.core.flowchart.openai import OpenAIFlowchartGenerator
-from noteviz.core.flowchart.mermaid import MermaidRenderer
-import streamlit.components.v1 as components
+from noteviz.config.test_config import TEST_MODE, TEST_RESPONSES
+from pypdf import PdfReader
 
-# Set page config with a beautiful theme
-st.set_page_config(
-    page_title="NoteViz",
-    page_icon="📚",
-    layout="wide"
-)
+# Import UI components
+from noteviz.ui.components.pdf_uploader import pdf_uploader
+from noteviz.ui.components.topic_selector import topic_selector
+from noteviz.ui.components.flowchart_viewer import flowchart_viewer
 
-# Custom CSS for a beautiful UI
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Set page config - MUST be the first Streamlit command
+st.set_page_config(page_title="NoteViz", page_icon="📚", layout="wide")
+
+# Add custom CSS
 st.markdown("""
-<style>
-    .main {
-        background-color: #f5f7f9;
-    }
-    .stApp {
-        background-color: #f5f7f9;
-    }
-    .stButton>button {
-        background-color: #4e54c8;
-        color: white;
-        border-radius: 10px;
-        padding: 10px 20px;
-        font-weight: bold;
-        border: none;
-        transition: all 0.3s ease;
-    }
-    .stButton>button:hover {
-        background-color: #3a3f9e;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-    }
-    .upload-header {
-        font-size: 24px;
-        font-weight: bold;
-        color: #2c3e50;
-        margin-bottom: 20px;
-    }
-    .section-header {
-        font-size: 22px;
-        font-weight: bold;
-        color: #2c3e50;
-        margin-top: 30px;
-        margin-bottom: 15px;
-    }
-    .topic-card {
-        background-color: white;
-        border-radius: 10px;
-        padding: 15px;
-        margin-bottom: 10px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-        transition: all 0.3s ease;
-        cursor: pointer;
-        display: inline-block;
-        width: calc(50% - 10px);
-        margin-right: 10px;
-        vertical-align: top;
-    }
-    .topic-card:hover {
-        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-        transform: translateY(-2px);
-    }
-    .topic-card.selected {
-        border: 2px solid #4e54c8;
-        background-color: #f8f9ff;
-    }
-    .topic-card h3 {
-        font-size: 16px;
-        margin-bottom: 5px;
-    }
-    .topic-card p {
-        font-size: 12px;
-        margin-bottom: 5px;
-    }
-    .flowchart-container {
-        background-color: white;
-        border-radius: 10px;
-        padding: 20px;
-        margin-top: 20px;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-    }
-    .summary-container {
-        background-color: white;
-        border-radius: 10px;
-        padding: 20px;
-        margin-top: 20px;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-    }
-    .custom-topic-container {
-        background-color: white;
-        border-radius: 10px;
-        padding: 20px;
-        margin-top: 20px;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-        text-align: center;
-    }
-    .node-tooltip {
-        position: absolute;
-        background-color: white;
-        border-radius: 8px;
-        padding: 15px;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-        max-width: 300px;
-        z-index: 1000;
-        display: none;
-    }
-    .loading-message {
-        color: #4e54c8;
-        font-weight: bold;
-        margin: 10px 0;
-    }
-    .topic-grid {
-        display: flex;
-        flex-wrap: wrap;
-        margin: 0 -5px;
-    }
-    .topic-grid-item {
-        flex: 0 0 calc(50% - 10px);
-        margin: 5px;
-    }
-    .stButton>button {
-        width: 100%;
-        background-color: #4e54c8;
-        color: white;
-        border-radius: 10px;
-        padding: 10px 20px;
-        font-weight: bold;
-        border: none;
-        transition: all 0.3s ease;
-    }
-    .stButton>button:hover {
-        background-color: #3a3f9e;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-    }
-</style>
+    <style>
+        /* Main Title */
+        h1.main-title {
+            color: #1f1f1f;
+            font-size: 3rem;
+            font-weight: 800;
+            margin: 1rem 0;
+            padding-bottom: 0.8rem;
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .logo-icon {
+            color: #4CAF50;
+            font-size: 2.8rem;
+            margin-right: 0.2rem;
+        }
+        .title-text {
+            background: linear-gradient(90deg, #1f1f1f 0%, #2e2e2e 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        h1.main-title::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 120px;
+            height: 6px;
+            background: linear-gradient(90deg, #4CAF50, #45a049);
+            border-radius: 3px;
+        }
+        
+        /* Section Headers */
+        h2.section-header {
+            color: #1f1f1f;
+            font-size: 2rem;
+            font-weight: 700;
+            margin: 1rem 0 0 0;
+            padding-bottom: 0.5rem;
+            position: relative;
+        }
+        h2.section-header::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 60px;
+            height: 4px;
+            background: linear-gradient(90deg, #4CAF50, #45a049);
+            border-radius: 2px;
+        }
+        
+        /* Topic Container and Boxes */
+        .topic-container {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1.5rem;
+            width: 100%;
+            margin: 0;
+            padding: 0.5rem;
+        }
+        .topic-box {
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 12px;
+            padding: 1.8rem;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            width: 100%;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            position: relative;
+            overflow: hidden;
+            margin-bottom: 1rem;
+        }
+        .topic-box:hover {
+            background-color: #ffffff;
+            transform: translateY(-4px);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+            border-color: #4CAF50;
+        }
+        .topic-box:active {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .topic-box h3 {
+            margin: 0;
+            color: #262730;
+            font-size: 1.3rem;
+            font-weight: 600;
+        }
+        .topic-box p {
+            margin: 1rem 0 0 0;
+            color: #666666;
+            font-size: 1rem;
+            line-height: 1.5;
+        }
+        .topic-box::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(90deg, #4CAF50, #45a049);
+            transform: scaleX(0);
+            transition: transform 0.3s ease;
+            transform-origin: left;
+        }
+        .topic-box:hover::after {
+            transform: scaleX(1);
+        }
+
+        /* Streamlit specific overrides */
+        .stMarkdown {
+            cursor: pointer;
+        }
+        .stMarkdown > div {
+            margin-bottom: 0 !important;
+        }
+        [data-testid="column"] {
+            padding: 0.3rem !important;
+        }
+        /* Hide Streamlit's default elements */
+        [data-testid="stMarkdown"] {
+            width: 100%;
+            margin-bottom: 0 !important;
+        }
+        div[data-testid="stMarkdown"] {
+            margin-bottom: 0 !important;
+        }
+        div[data-testid="stMarkdown"] > div {
+            margin-bottom: 0 !important;
+        }
+        div[data-testid="stVerticalBlock"] {
+            gap: 0 !important;
+            padding: 0 !important;
+        }
+        section[data-testid="stSidebar"] {
+            padding-top: 0 !important;
+        }
+        .block-container {
+            padding-top: 2rem !important;
+            padding-bottom: 0 !important;
+            max-width: 100% !important;
+        }
+        .element-container {
+            margin-bottom: 0 !important;
+        }
+        /* Custom styling for other headers */
+        .custom-header {
+            color: #1f1f1f;
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin: 1.5rem 0 1rem 0;
+        }
+    </style>
 """, unsafe_allow_html=True)
 
 # Initialize session state
@@ -152,333 +192,250 @@ if 'topics' not in st.session_state:
     st.session_state.topics = []
 if 'selected_topic' not in st.session_state:
     st.session_state.selected_topic = None
-if 'custom_topic' not in st.session_state:
-    st.session_state.custom_topic = ""
-if 'flowchart' not in st.session_state:
-    st.session_state.flowchart = None
-if 'summary' not in st.session_state:
-    st.session_state.summary = None
-if 'processing' not in st.session_state:
-    st.session_state.processing = False
-if 'node_click' not in st.session_state:
-    st.session_state.node_click = None
-if 'error' not in st.session_state:
-    st.session_state.error = None
-if 'summary_timeout' not in st.session_state:
-    st.session_state.summary_timeout = False
-if 'summary_progress' not in st.session_state:
-    st.session_state.summary_progress = None
-if 'summary_retries' not in st.session_state:
-    st.session_state.summary_retries = 0
+if 'page_aware_chunks' not in st.session_state:
+    st.session_state.page_aware_chunks = None
 
-async def process_pdf(pdf_path):
-    """Process the PDF and extract topics."""
+# Set up the page
+st.markdown("""
+    <h1 class="main-title">
+        <span class="logo-icon">📚</span>
+        <span class="title-text">NoteViz - Visualize your Notes</span>
+    </h1>
+""", unsafe_allow_html=True)
+
+# Show test mode indicator
+if TEST_MODE:
+    st.info("🧪 Test Mode Enabled")
+
+# Check API key
+if not TEST_MODE and not os.getenv("OPENAI_API_KEY"):
+    st.error("OpenAI API key not found. Please set the OPENAI_API_KEY environment variable.")
+    st.stop()
+
+@st.cache_data
+def process_pdf(pdf_content):
+    """Process a PDF file and extract topics."""
+    logger.info("Starting PDF processing...")
+    
+    # Create temporary file
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+        tmp_file.write(pdf_content)
+        pdf_path = Path(tmp_file.name)
+        logger.info(f"Created temporary file: {pdf_path}")
+    
     try:
         # Initialize components
         config = PDFConfig()
-        processor = PyPDFProcessor(config)
-        
-        # Initialize topic extractor with config
-        topic_config = TopicExtractorConfig(
-            model_name="gpt-3.5-turbo",
-            temperature=0.7,
-            max_tokens=1000,
-            num_topics=5
-        )
-        topic_extractor = OpenAITopicExtractor(topic_config)
+        processor = PageAwarePDFProcessor(config)
+        topic_extractor = OpenAITopicExtractor(TopicExtractorConfig())
         
         # Process PDF
-        chunks = await processor.process_pdf(pdf_path)
+        logger.info("Processing PDF...")
+        chunks = []
+        
+        # Use context manager to ensure file is closed
+        with open(pdf_path, 'rb') as pdf_file:
+            reader = PdfReader(pdf_file)
+            logger.info(f"PDF loaded. Total pages: {len(reader.pages)}")
+            
+            for page_num, page in enumerate(reader.pages, 1):
+                logger.info(f"Processing page {page_num}...")
+                page_text = page.extract_text()
+                if not page_text.strip():
+                    continue
+                
+                chunk = PageAwareChunk(
+                    text=page_text,
+                    page_number=page_num,
+                    start_char=0,
+                    end_char=len(page_text)
+                )
+                chunks.append(chunk)
+                logger.info(f"Added chunk for page {page_num}")
         
         # Extract topics
-        topics = await topic_extractor.extract_topics(chunks)
+        logger.info("Extracting topics...")
+        if TEST_MODE:
+            topics = TEST_RESPONSES["topics"]
+            descriptions = TEST_RESPONSES["topic_descriptions"]
+            logger.info("Using test topics")
+        else:
+            chunk_texts = [chunk.text for chunk in chunks]
+            topics = topic_extractor.extract_topics_sync(chunk_texts)
+            descriptions = {topic: f"Description for {topic}" for topic in topics}
+            logger.info(f"Extracted {len(topics)} topics")
         
-        return topics
-    except Exception as e:
-        st.error(f"Error processing PDF: {str(e)}")
-        return []
+        return chunks, topics, descriptions
+    finally:
+        # Clean up temporary file - now safe to delete since file handle is closed
+        try:
+            os.unlink(pdf_path)
+            logger.info("Cleaned up temporary file")
+        except Exception as e:
+            logger.warning(f"Failed to clean up temporary file: {e}")
+            # Don't raise the error as it's not critical
 
-async def generate_flowchart(pdf_path, topic, keywords=None):
-    """Generate a flowchart for the given topic."""
-    try:
-        # Initialize components
-        config = PDFConfig()
-        processor = PyPDFProcessor(config)
-        flowchart_generator = OpenAIFlowchartGenerator()
-        
-        # Process PDF
-        chunks = await processor.process_pdf(pdf_path)
-        text = "\n".join(chunks)  # Combine chunks into a single text
-        
-        # Generate flowchart
-        flowchart = await flowchart_generator.generate_flowchart(
-            text=text,
-            topic=topic,
-            keywords=keywords or []
-        )
-        
-        return flowchart
-    except Exception as e:
-        st.error(f"Error generating flowchart: {str(e)}")
-        return None
+# File uploader
+uploaded_file = st.file_uploader("Upload your PDF", type=['pdf'])
 
-async def generate_summary(text: str, topic: str) -> str:
-    """Generate a summary of the text using OpenAI."""
-    try:
-        # Initialize summarizer with config
-        summarizer_config = SummarizerConfig(
-            model_name="gpt-3.5-turbo",
-            temperature=0.7,
-            max_tokens=500
-        )
-        summarizer = OpenAISummarizer(summarizer_config)
-        
-        # Combine PDF chunks into a single text
-        combined_text = "\n\n".join(text)
-        
-        # Add context about the topic
-        text_with_context = f"Topic: {topic}\n\n{combined_text}"
-        
-        # Get summary from OpenAI
-        summary = await summarizer.summarize(text=text_with_context)
-        
-        # Display raw API response for debugging
-        st.write("Raw API Response:")
-        st.code(summary, language="text")
-        
-        if not summary:
-            st.error("Summary generation failed: Empty response from API")
-            return None
+if uploaded_file:
+    # Process PDF when file is uploaded
+    with st.spinner("Analyzing document..."):
+        try:
+            chunks, topics, descriptions = process_pdf(uploaded_file.getvalue())
+            st.session_state.page_aware_chunks = chunks
+            st.session_state.topics = topics
+            st.session_state.topic_descriptions = descriptions
+        except Exception as e:
+            logger.error(f"Error processing document: {str(e)}")
+            st.error(f"Error processing document: {str(e)}")
+            st.stop()
+    
+    # Display topics in a grid
+    st.markdown('<h2 class="section-header">✨ Explore Topics in Your Document</h2>', unsafe_allow_html=True)
+    
+    # Create columns for the grid layout
+    col1, col2 = st.columns(2)
+    
+    # Display topics in columns
+    for idx, topic in enumerate(topics):
+        with col1 if idx % 2 == 0 else col2:
+            st.markdown(f"""
+                <style>
+                    div[data-testid="stButton"] > button {{
+                        width: 100%;
+                        background-color: #f8f9fa;
+                        border: 1px solid #e9ecef;
+                        border-radius: 12px;
+                        padding: 1.8rem;
+                        height: auto;
+                        text-align: left;
+                        color: inherit;
+                        margin-bottom: 1.2rem;
+                    }}
+                    div[data-testid="stButton"] > button:hover {{
+                        background-color: #ffffff;
+                        border-color: #4CAF50;
+                        transform: translateY(-4px);
+                        box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+                    }}
+                    div[data-testid="stButton"] > button:active {{
+                        transform: translateY(-2px);
+                        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+                    }}
+                    div[data-testid="stButton"] > button p {{
+                        font-size: 1rem;
+                        color: #666666;
+                        margin-top: 0.8rem;
+                    }}
+                    div[data-testid="stButton"] > button strong {{
+                        display: block;
+                        font-size: 1.4rem;
+                        font-weight: 800;
+                        color: #1f1f1f;
+                        margin-bottom: 0.8rem;
+                        letter-spacing: -0.02em;
+                    }}
+                </style>
+            """, unsafe_allow_html=True)
             
-        return summary
-        
-    except Exception as e:
-        st.error(f"Error in summary generation: {str(e)}")
-        return None
+            if st.button(
+                f"""**{topic}**
 
-def render_mermaid(flowchart):
-    """Render the flowchart using Mermaid."""
-    renderer = MermaidRenderer()
-    mermaid_code = renderer.render(flowchart)
+                {descriptions.get(topic, '')}""",
+                key=f"topic_{idx}"
+            ):
+                st.session_state.selected_topic = topic
     
-    # Create a unique ID for this flowchart
-    flowchart_id = f"flowchart_{id(flowchart)}"
+    # Custom topic input
+    st.markdown('<h3 class="custom-header">✨ Or Enter Your Own Topic</h3>', unsafe_allow_html=True)
+    custom_topic = st.text_input("Enter a topic", key="custom_topic")
+    if st.button("Visualize", use_container_width=True) and custom_topic:
+        st.session_state.selected_topic = custom_topic
     
-    # Create tooltip container
-    tooltip_html = """
-    <div id="node-tooltip" class="node-tooltip">
-        <h4 style="color: #2c3e50; margin-bottom: 8px;"></h4>
-        <p style="color: #7f8c8d; font-size: 14px;"></p>
-    </div>
-    """
-    
-    # Use Streamlit's components to render Mermaid with hover and click handling
-    components.html(
-        f"""
-        {tooltip_html}
-        <div id="{flowchart_id}" class="mermaid">
-        {mermaid_code}
-        </div>
-        <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
-        <script>
-            // Initialize mermaid
-            mermaid.initialize({{ 
-                startOnLoad: true, 
-                theme: 'default',
-                flowchart: {{
-                    htmlLabels: true,
-                    curve: 'basis'
-                }}
-            }});
-            
-            // Function to handle node clicks
-            function handleNodeClick(nodeId) {{
-                window.parent.postMessage({{
-                    type: 'node_click',
-                    nodeId: nodeId
-                }}, '*');
-            }}
-            
-            // Function to show tooltip
-            function showTooltip(node, event) {{
-                const tooltip = document.getElementById('node-tooltip');
-                const title = tooltip.querySelector('h4');
-                const description = tooltip.querySelector('p');
-                
-                title.textContent = node.label;
-                description.textContent = node.description || 'Click to explore this topic';
-                
-                tooltip.style.display = 'block';
-                tooltip.style.left = event.pageX + 10 + 'px';
-                tooltip.style.top = event.pageY + 10 + 'px';
-            }}
-            
-            // Function to hide tooltip
-            function hideTooltip() {{
-                const tooltip = document.getElementById('node-tooltip');
-                tooltip.style.display = 'none';
-            }}
-            
-            // Add event listeners after mermaid renders
-            document.addEventListener('DOMContentLoaded', function() {{
-                const observer = new MutationObserver(function(mutations) {{
-                    mutations.forEach(function(mutation) {{
-                        if (mutation.addedNodes.length) {{
-                            const nodes = document.querySelectorAll('.node');
-                            nodes.forEach(node => {{
-                                node.style.cursor = 'pointer';
-                                
-                                // Add hover events
-                                node.addEventListener('mouseenter', function(e) {{
-                                    const nodeId = this.id;
-                                    const nodeData = {{
-                                        label: this.querySelector('text').textContent,
-                                        description: this.getAttribute('title') || ''
-                                    }};
-                                    showTooltip(nodeData, e);
-                                }});
-                                
-                                node.addEventListener('mouseleave', hideTooltip);
-                                
-                                // Add click event
-                                node.onclick = function() {{
-                                    const nodeId = this.id;
-                                    handleNodeClick(nodeId);
-                                }};
-                            }});
-                        }}
-                    }});
-                }});
-                
-                observer.observe(document.getElementById('{flowchart_id}'), {{
-                    childList: true,
-                    subtree: true
-                }});
-            }});
-        </script>
-        """,
-        height=500
-    )
-    
-    # Store the flowchart in session state for reference
-    if 'flowcharts' not in st.session_state:
-        st.session_state.flowcharts = {}
-    st.session_state.flowcharts[flowchart_id] = flowchart
-
-async def main():
-    st.title("📚 NoteViz - Visualize Your Notes")
-    
-    # Initialize session state
-    if 'flowchart' not in st.session_state:
-        st.session_state.flowchart = None
-    if 'summary' not in st.session_state:
-        st.session_state.summary = None
-    if 'error' not in st.session_state:
-        st.session_state.error = None
-    if 'summary_timeout' not in st.session_state:
-        st.session_state.summary_timeout = False
+    # Show flowchart and summary if a topic is selected
+    if st.session_state.selected_topic:
+        col1, col2 = st.columns(2)
         
-    # Create two columns
-    col1, col2 = st.columns([1, 2])
-    
-    with col1:
-        st.markdown("### 📄 Upload Your Notes")
-        uploaded_file = st.file_uploader("Choose a PDF file", type=['pdf'])
-        
-        if uploaded_file:
-            # Save the uploaded file
-            with open("temp.pdf", "wb") as f:
-                f.write(uploaded_file.getvalue())
-            
-            # Extract topics
-            with st.spinner("🔍 Analyzing document..."):
-                topics = await process_pdf("temp.pdf")
-                
-            if topics:
-                st.markdown("### 🎯 Select a Topic")
-                # Display topics in a grid
-                cols = st.columns(2)
-                for i, topic in enumerate(topics):
-                    with cols[i % 2]:
-                        # Get topic name from Topic object
-                        topic_name = topic.name if hasattr(topic, 'name') else str(topic)
-                        if st.button(topic_name, key=f"topic_{i}", use_container_width=True):
-                            st.session_state.selected_topic = topic_name
-                            # Reset states when new topic is selected
-                            st.session_state.flowchart = None
-                            st.session_state.summary = None
-                            st.session_state.error = None
-                            st.session_state.summary_timeout = False
-                
-                # Custom topic input
-                st.markdown("### ✍️ Or Enter Your Own Topic")
-                custom_topic = st.text_input("Enter a specific topic to explore", key="custom_topic")
-                if custom_topic and st.button("Generate for Custom Topic", key="custom_topic_btn"):
-                    st.session_state.selected_topic = custom_topic
-                    # Reset states when new topic is selected
-                    st.session_state.flowchart = None
-                    st.session_state.summary = None
-                    st.session_state.error = None
-                    st.session_state.summary_timeout = False
-    
-    with col2:
-        if 'selected_topic' in st.session_state:
-            st.markdown(f"### 📊 Visualization for: {st.session_state.selected_topic}")
-            
-            # Show loading message
-            with st.spinner("🔄 Generating visualization..."):
+        with col1:
+            st.subheader(f"Flowchart: {st.session_state.selected_topic}")
+            with st.spinner("Generating flowchart..."):
                 try:
-                    # Generate flowchart
-                    flowchart = await generate_flowchart("temp.pdf", st.session_state.selected_topic)
-                    if flowchart:
-                        st.session_state.flowchart = flowchart
-                        st.markdown("### 📝 Generated Flowchart")
-                        # Display raw flowchart data for debugging
-                        st.write("Raw Flowchart Data:")
-                        st.code(flowchart, language="mermaid")
-                        # Render the flowchart
-                        render_mermaid(flowchart)
+                    if TEST_MODE:
+                        from noteviz.core.flowchart.base import Flowchart, Node, Edge
+                        nodes = [
+                            Node(id="A", label="Introduction to AI", confidence=0.9),
+                            Node(id="B", label="Machine Learning Basics", confidence=0.8),
+                            Node(id="C", label="Neural Networks", confidence=0.7),
+                            Node(id="D", label="Deep Learning Applications", confidence=0.8)
+                        ]
+                        edges = [
+                            Edge(source="A", target="B", label="includes"),
+                            Edge(source="B", target="C", label="includes"),
+                            Edge(source="C", target="D", label="includes")
+                        ]
+                        flowchart = Flowchart(
+                            title=f"Flowchart for {st.session_state.selected_topic}",
+                            description="Test flowchart",
+                            nodes=nodes,
+                            edges=edges
+                        )
                     else:
-                        st.error("Failed to generate flowchart")
-                        
-                    # Generate summary with timeout
-                    with st.spinner("📝 Generating summary..."):
-                        try:
-                            # Process PDF first
-                            config = PDFConfig()
-                            processor = PyPDFProcessor(config)
-                            chunks = await processor.process_pdf("temp.pdf")
-                            
-                            # Generate summary with timeout
-                            summary = await asyncio.wait_for(
-                                generate_summary(chunks, st.session_state.selected_topic),
-                                timeout=30.0
-                            )
-                            
-                            if summary:
-                                st.session_state.summary = summary
-                                st.markdown("### 📋 Summary")
-                                st.write(summary)
-                            else:
-                                st.error("Failed to generate summary")
-                                
-                        except asyncio.TimeoutError:
-                            st.session_state.summary_timeout = True
-                            st.error("Summary generation is taking longer than expected. Please wait...")
-                        except Exception as e:
-                            st.error(f"Error generating summary: {str(e)}")
-                            
+                        generator = OpenAIFlowchartGenerator()
+                        flowchart = generator.generate_flowchart_sync(
+                            st.session_state.page_aware_chunks,
+                            st.session_state.selected_topic
+                        )
+                    
+                    # Render flowchart
+                    if isinstance(flowchart, str):
+                        mermaid_code = flowchart
+                    else:
+                        from noteviz.core.flowchart.mermaid import MermaidRenderer
+                        renderer = MermaidRenderer()
+                        mermaid_code = renderer.render(flowchart)
+                    
+                    st.components.v1.html(
+                        f"""
+                        <div class="mermaid">
+                        {mermaid_code}
+                        </div>
+                        <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+                        <script>
+                            mermaid.initialize({{ 
+                                startOnLoad: true, 
+                                theme: 'default',
+                                flowchart: {{
+                                    htmlLabels: true,
+                                    curve: 'basis'
+                                }}
+                            }});
+                        </script>
+                        """,
+                        height=500
+                    )
                 except Exception as e:
-                    st.error(f"Error: {str(e)}")
-                    st.session_state.error = str(e)
-            
-            # Display error if any
-            if st.session_state.error:
-                st.error(f"An error occurred: {st.session_state.error}")
-                
-            # Display timeout message if applicable
-            if st.session_state.summary_timeout:
-                st.warning("Summary generation is still in progress. This might take a few minutes.")
-
-if __name__ == "__main__":
-    asyncio.run(main()) 
+                    logger.error(f"Error generating flowchart: {str(e)}")
+                    st.error(f"Error generating flowchart: {str(e)}")
+        
+        with col2:
+            st.subheader("Summary")
+            with st.spinner("Generating summary..."):
+                try:
+                    if TEST_MODE:
+                        summary = TEST_RESPONSES["topic_summaries"].get(
+                            st.session_state.selected_topic,
+                            "Test summary"
+                        )
+                    else:
+                        summarizer = OpenAISummarizer(SummarizerConfig())
+                        summary = summarizer.generate_summary_sync(
+                            st.session_state.page_aware_chunks,
+                            st.session_state.selected_topic
+                        )
+                    st.write(summary)
+                except Exception as e:
+                    logger.error(f"Error generating summary: {str(e)}")
+                    st.error(f"Error generating summary: {str(e)}")
+else:
+    st.info("Upload your PDF to see the topics!") 
