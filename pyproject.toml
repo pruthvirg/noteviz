@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "noteviz"
+version = "0.1.0"
+description = "A tool for visualizing PDF notes"
+requires-python = ">=3.8"
+dependencies = [
+    "openai>=1.0.0",
+    "pypdf>=5.0.0",
+    "numpy>=1.24.0",
+    "streamlit>=1.32.0",
+    "python-dotenv>=1.0.1",
+    "aiohttp>=3.9.3",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "strict"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v"
+
+[tool.pytest-asyncio]
+asyncio_mode = "strict" 

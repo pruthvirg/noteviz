@@ -3,12 +3,24 @@ OpenAI implementation of the LLM service.
 """
 import json
 import random
+import os
 from typing import List, Optional
 
 from openai import AsyncOpenAI
+from openai import OpenAIError
 
 from .base import LLMConfig, LLMService, Topic, Summarizer, TopicExtractor
 from .config import SummarizerConfig, TopicExtractorConfig
+
+
+def get_openai_client() -> AsyncOpenAI:
+    """Get an OpenAI client with proper API key handling."""
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise ValueError(
+            "OpenAI API key not found. Please set the OPENAI_API_KEY environment variable."
+        )
+    return AsyncOpenAI(api_key=api_key)
 
 
 class OpenAILLMService(LLMService):
@@ -21,7 +33,10 @@ class OpenAILLMService(LLMService):
         client: Optional[AsyncOpenAI] = None
     ):
         super().__init__(summarizer_config, topic_extractor_config)
-        self.client = client or AsyncOpenAI()
+        try:
+            self.client = client or get_openai_client()
+        except Exception as e:
+            raise ValueError(f"Failed to initialize OpenAI client: {str(e)}")
     
     async def generate_summary(self, text: str, max_length: Optional[int] = None) -> str:
         """Generate a summary of the text.
